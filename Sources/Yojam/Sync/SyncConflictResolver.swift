@@ -39,14 +39,48 @@ enum SyncConflictResolver {
         for rule in local { merged[rule.id] = rule }
         for rule in remote {
             if let existing = merged[rule.id] {
-                if (rule.lastModifiedAt ?? .distantPast) > (existing.lastModifiedAt ?? .distantPast) {
-                    merged[rule.id] = rule
-                }
+                merged[rule.id] = mergeRule(local: existing, remote: rule)
             } else {
                 merged[rule.id] = rule
             }
         }
         return merged.values.sorted { $0.priority < $1.priority }
+    }
+
+    private static func mergeRule(local: Rule, remote: Rule) -> Rule {
+        let remoteIsNewer = (remote.lastModifiedAt ?? .distantPast)
+            > (local.lastModifiedAt ?? .distantPast)
+        var merged = remoteIsNewer ? remote : local
+
+        let localScopeDate = machineScopeDate(local)
+        let remoteScopeDate = machineScopeDate(remote)
+        if let remoteScopeDate,
+           remoteScopeDate > (localScopeDate ?? .distantPast) {
+            merged.machineScopeIdentifiers = remote.machineScopeIdentifiers
+            merged.machineScopeNames = remote.machineScopeNames
+            merged.machineScopeModifiedAt = remote.machineScopeModifiedAt ?? remote.lastModifiedAt
+        } else if let localScopeDate,
+                  localScopeDate > (remoteScopeDate ?? .distantPast) {
+            merged.machineScopeIdentifiers = local.machineScopeIdentifiers
+            merged.machineScopeNames = local.machineScopeNames
+            merged.machineScopeModifiedAt = local.machineScopeModifiedAt ?? local.lastModifiedAt
+        }
+        return merged
+    }
+
+    private static func machineScopeDate(_ rule: Rule) -> Date? {
+        if let machineScopeModifiedAt = rule.machineScopeModifiedAt {
+            return machineScopeModifiedAt
+        }
+        let ids = normalizedMachineScope(rule.machineScopeIdentifiers)
+        return ids.isEmpty ? nil : rule.lastModifiedAt
+    }
+
+    private static func normalizedMachineScope(_ ids: [String]?) -> [String] {
+        (ids ?? [])
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .sorted()
     }
 
     // §7: Preserve local order, append remote-only entries. Use timestamps when available.

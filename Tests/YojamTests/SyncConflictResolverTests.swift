@@ -64,4 +64,44 @@ final class SyncConflictResolverTests: XCTestCase {
         XCTAssertEqual(merged.count, 1)
         XCTAssertEqual(merged[0].name, "New")
     }
+
+    func testRuleMergePreservesMachineScopeEditFromOlderRemoteRule() {
+        let id = UUID()
+        let local = Rule(id: id, name: "Local renamed", matchType: .domain, pattern: "a.com",
+                         targetBundleId: "com.test", targetAppName: "Test",
+                         lastModifiedAt: Date(timeIntervalSince1970: 3000))
+        let remote = Rule(id: id, name: "Original", matchType: .domain, pattern: "a.com",
+                          targetBundleId: "com.test", targetAppName: "Test",
+                          machineScopeIdentifiers: ["work-mac"],
+                          machineScopeNames: ["work-mac": "Work Mac"],
+                          lastModifiedAt: Date(timeIntervalSince1970: 2000))
+
+        let merged = SyncConflictResolver.mergeRules(local: [local], remote: [remote])
+
+        XCTAssertEqual(merged.count, 1)
+        XCTAssertEqual(merged[0].name, "Local renamed")
+        XCTAssertEqual(merged[0].machineScopeIdentifiers, ["work-mac"])
+        XCTAssertEqual(merged[0].machineScopeNames?["work-mac"], "Work Mac")
+    }
+
+    func testRuleMergeAllowsNewerMachineScopeClear() {
+        let id = UUID()
+        let local = Rule(id: id, name: "Scoped", matchType: .domain, pattern: "a.com",
+                         targetBundleId: "com.test", targetAppName: "Test",
+                         machineScopeIdentifiers: ["work-mac"],
+                         machineScopeNames: ["work-mac": "Work Mac"],
+                         machineScopeModifiedAt: Date(timeIntervalSince1970: 1000),
+                         lastModifiedAt: Date(timeIntervalSince1970: 1000))
+        let remote = Rule(id: id, name: "Scoped", matchType: .domain, pattern: "a.com",
+                          targetBundleId: "com.test", targetAppName: "Test",
+                          machineScopeModifiedAt: Date(timeIntervalSince1970: 2000),
+                          lastModifiedAt: Date(timeIntervalSince1970: 2000))
+
+        let merged = SyncConflictResolver.mergeRules(local: [local], remote: [remote])
+
+        XCTAssertEqual(merged.count, 1)
+        XCTAssertNil(merged[0].machineScopeIdentifiers)
+        XCTAssertNil(merged[0].machineScopeNames)
+        XCTAssertEqual(merged[0].machineScopeModifiedAt, Date(timeIntervalSince1970: 2000))
+    }
 }

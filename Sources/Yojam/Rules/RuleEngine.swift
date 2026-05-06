@@ -83,7 +83,7 @@ final class RuleEngine: ObservableObject {
 
     func addRule(_ rule: Rule) {
         var r = rule
-        r.lastModifiedAt = Date()
+        stampRuleChange(&r, previous: nil)
         rules.append(r)
         save()
     }
@@ -91,7 +91,7 @@ final class RuleEngine: ObservableObject {
     func updateRule(_ rule: Rule) {
         if let idx = rules.firstIndex(where: { $0.id == rule.id }) {
             var r = rule
-            r.lastModifiedAt = Date()
+            stampRuleChange(&r, previous: rules[idx])
             rules[idx] = r
             save()
         }
@@ -126,6 +126,7 @@ final class RuleEngine: ObservableObject {
             sourceAppName: original.sourceAppName,
             machineScopeIdentifiers: original.machineScopeIdentifiers,
             machineScopeNames: original.machineScopeNames,
+            machineScopeModifiedAt: original.machineScopeModifiedAt,
             firefoxContainer: original.firefoxContainer,
             targetDisplayUUID: original.targetDisplayUUID,
             targetDisplayIndex: original.targetDisplayIndex,
@@ -134,7 +135,7 @@ final class RuleEngine: ObservableObject {
             ruleOpenInPrivateWindow: original.ruleOpenInPrivateWindow,
             ruleCustomLaunchArgs: original.ruleCustomLaunchArgs,
             ruleOpenAsNewInstance: original.ruleOpenAsNewInstance)
-        copy.lastModifiedAt = Date()
+        stampRuleChange(&copy, previous: nil)
         rules.append(copy)
         save()
     }
@@ -187,6 +188,26 @@ final class RuleEngine: ObservableObject {
     private func save() {
         sortedEnabledRulesCache = nil
         settingsStore.saveRules(rules)
+    }
+
+    private func stampRuleChange(_ rule: inout Rule, previous: Rule?) {
+        let now = Date()
+        if let previous {
+            if normalizedMachineScope(rule.machineScopeIdentifiers)
+                != normalizedMachineScope(previous.machineScopeIdentifiers) {
+                rule.machineScopeModifiedAt = now
+            }
+        } else if rule.machineScopeModifiedAt == nil {
+            rule.machineScopeModifiedAt = now
+        }
+        rule.lastModifiedAt = now
+    }
+
+    private func normalizedMachineScope(_ ids: [String]?) -> [String] {
+        (ids ?? [])
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .sorted()
     }
 
     func exportRules() throws -> Data {

@@ -21,6 +21,9 @@ public struct Rule: Codable, Identifiable, Equatable, Sendable {
     public var machineScopeIdentifiers: [String]?
     /// Human-readable names captured when machine-scoped rules are created.
     public var machineScopeNames: [String: String]?
+    /// Field-level timestamp for machine scope changes. This lets iCloud merge
+    /// scope edits independently from unrelated rule edits on another Mac.
+    public var machineScopeModifiedAt: Date?
     public var lastModifiedAt: Date?
 
     // Structured action fields.
@@ -65,6 +68,7 @@ public struct Rule: Codable, Identifiable, Equatable, Sendable {
         sourceAppName: String? = nil,
         machineScopeIdentifiers: [String]? = nil,
         machineScopeNames: [String: String]? = nil,
+        machineScopeModifiedAt: Date? = nil,
         lastModifiedAt: Date? = nil,
         firefoxContainer: String? = nil,
         targetDisplayUUID: String? = nil,
@@ -84,6 +88,7 @@ public struct Rule: Codable, Identifiable, Equatable, Sendable {
         self.sourceAppBundleId = sourceAppBundleId; self.sourceAppName = sourceAppName
         self.machineScopeIdentifiers = machineScopeIdentifiers
         self.machineScopeNames = machineScopeNames
+        self.machineScopeModifiedAt = machineScopeModifiedAt
         self.lastModifiedAt = lastModifiedAt
         self.firefoxContainer = firefoxContainer
         self.targetDisplayUUID = targetDisplayUUID
@@ -100,7 +105,7 @@ public struct Rule: Codable, Identifiable, Equatable, Sendable {
         case targetBundleId, targetAppName, targetBrowserEntryId, isBuiltIn, priority
         case stripUTMParams, rewriteRules
         case sourceAppBundleId, sourceAppName
-        case machineScopeIdentifiers, machineScopeNames, lastModifiedAt
+        case machineScopeIdentifiers, machineScopeNames, machineScopeModifiedAt, lastModifiedAt
         case firefoxContainer, targetDisplayUUID, targetDisplayIndex, metadata
         case ruleProfileId, ruleOpenInPrivateWindow, ruleCustomLaunchArgs
         case ruleOpenAsNewInstance
@@ -124,6 +129,7 @@ public struct Rule: Codable, Identifiable, Equatable, Sendable {
         self.sourceAppName = try c.decodeIfPresent(String.self, forKey: .sourceAppName)
         self.machineScopeIdentifiers = try c.decodeIfPresent([String].self, forKey: .machineScopeIdentifiers)
         self.machineScopeNames = try c.decodeIfPresent([String: String].self, forKey: .machineScopeNames)
+        self.machineScopeModifiedAt = try c.decodeIfPresent(Date.self, forKey: .machineScopeModifiedAt)
         self.lastModifiedAt = try c.decodeIfPresent(Date.self, forKey: .lastModifiedAt)
         self.firefoxContainer = try c.decodeIfPresent(String.self, forKey: .firefoxContainer)
         self.targetDisplayUUID = try c.decodeIfPresent(String.self, forKey: .targetDisplayUUID)
