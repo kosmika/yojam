@@ -277,6 +277,47 @@ final class RoutingServiceDecisionTests: XCTestCase {
         }
     }
 
+    func testMatchedRulePickerPreselectsConfiguredBrowserEntryById() {
+        let workId = UUID()
+        let personalId = UUID()
+        let work = BrowserEntry(
+            id: workId,
+            bundleIdentifier: "org.mozilla.firefox",
+            displayName: "Firefox",
+            profileId: "work",
+            profileName: "Work")
+        let personal = BrowserEntry(
+            id: personalId,
+            bundleIdentifier: "org.mozilla.firefox",
+            displayName: "Firefox",
+            profileId: "personal",
+            profileName: "Personal")
+        let rule = Rule(
+            name: "Personal Mail",
+            matchType: .domain,
+            pattern: "mail.example.com",
+            targetBundleId: "org.mozilla.firefox",
+            targetAppName: "Firefox - Personal",
+            targetBrowserEntryId: personalId)
+        let config = makeConfig(
+            browsers: [work, personal],
+            rules: [rule],
+            activationMode: .holdShift)
+        let request = IncomingLinkRequest(
+            url: URL(string: "https://mail.example.com/inbox")!,
+            origin: .defaultHandler,
+            modifierFlags: 1 << 17)
+
+        let decision = RoutingService.decide(request: request, configuration: config)
+
+        if case .showPicker(let entries, let preselected, _, _, _) = decision {
+            XCTAssertEqual(entries[preselected].id, personalId)
+            XCTAssertEqual(entries[preselected].profileId, "personal")
+        } else {
+            XCTFail("Matched rule picker should preselect the configured browser profile")
+        }
+    }
+
     func testMachineScopedRuleOnlyMatchesCurrentMachine() {
         let rule = Rule(
             name: "Work Mac", matchType: .all, pattern: "",

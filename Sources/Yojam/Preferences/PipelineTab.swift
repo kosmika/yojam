@@ -1031,16 +1031,15 @@ struct AddRuleSheet: View {
     private var browserOptionsSection: some View {
         if !targetBundleId.isEmpty {
             Divider().background(Theme.borderSubtle).padding(.vertical, 4)
-            Text("Browser options for this rule")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(Theme.textSecondary)
-            Text("Overrides the target browser's defaults when this rule matches. Leave as \u{201C}Inherit\u{201D} to use whatever is configured on the Browsers tab.")
-                .font(.system(size: 10))
-                .foregroundColor(Theme.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 4) {
+                Text("Browser options for this rule")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(Theme.textSecondary)
+                ThemeHelpIcon(text: HelpText.Pipeline.ruleBrowserOptions)
+            }
 
             if !targetProfiles.isEmpty {
-                fieldRow("Profile") {
+                fieldRow("Profile", helpText: HelpText.Pipeline.ruleProfileOverride) {
                     Picker("", selection: $ruleProfileId) {
                         Text("Inherit from target").tag(nil as String?)
                         ForEach(targetProfiles) { profile in
@@ -1054,7 +1053,7 @@ struct AddRuleSheet: View {
             }
 
             if ProfileLaunchHelper.supportsPrivateWindow(browserBundleId: targetBundleId) {
-                fieldRow("Window Type") {
+                fieldRow("Window Type", helpText: HelpText.Pipeline.ruleWindowTypeOverride) {
                     Picker("", selection: $rulePrivateWindowOverride) {
                         ForEach(PrivateWindowOverride.allCases) { opt in
                             Text(opt.displayName).tag(opt)
@@ -1075,7 +1074,7 @@ struct AddRuleSheet: View {
                 }
             }
 
-            fieldRow("Instance") {
+            fieldRow("Instance", helpText: HelpText.Pipeline.ruleInstanceOverride) {
                 Picker("", selection: $ruleNewInstanceOverride) {
                     ForEach(NewInstanceOverride.allCases) { opt in
                         Text(opt.displayName).tag(opt)
@@ -1091,11 +1090,11 @@ struct AddRuleSheet: View {
     @ViewBuilder
     private var advancedTargetingFields: some View {
         if isFirefoxTarget(targetBundleId) {
-            fieldRow("Firefox Container (optional)") {
+            fieldRow("Firefox Container (optional)", helpText: HelpText.Rules.firefoxContainer) {
                 ThemeTextField(placeholder: "Work", text: $firefoxContainer)
             }
         }
-        fieldRow("Target Display (optional)") {
+        fieldRow("Target Display (optional)", helpText: HelpText.Rules.displayTargeting) {
             Picker("", selection: $targetDisplayUUID) {
                 Text("Any").tag(nil as String?)
                 ForEach(DisplayManager.availableDisplays()) { display in
@@ -1153,11 +1152,14 @@ struct AddRuleSheet: View {
         targetBundleId = rule.targetBundleId
         targetAppName = rule.targetAppName
         targetBrowserEntryId = rule.targetBrowserEntryId
-        if let targetBrowserEntryId,
-           browserManager.browsers.contains(where: { $0.id == targetBrowserEntryId }) {
-            targetSelection = "browser:\(targetBrowserEntryId.uuidString)"
-        } else if !rule.targetBundleId.isEmpty {
-            targetSelection = "app:\(rule.targetBundleId)"
+        if let browserEntryId = rule.targetBrowserEntryId,
+           browserManager.browsers.contains(where: { $0.id == browserEntryId }) {
+            targetSelection = "browser:\(browserEntryId.uuidString)"
+        } else {
+            targetBrowserEntryId = nil
+            if !rule.targetBundleId.isEmpty {
+                targetSelection = "app:\(rule.targetBundleId)"
+            }
         }
         priority = rule.priority
         stripUTMParams = rule.stripUTMParams

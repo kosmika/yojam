@@ -498,6 +498,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .showPicker(let entries, let preselectedIndex, let finalURL, let isEmail, let reason):
             recentURLsManager.add(finalURL, retention: settingsStore.recentURLRetention)
 
+            let pickerMatchedRule: Rule?
+            if reason?.hasPrefix("Matched rule:") == true {
+                pickerMatchedRule = ruleEngine.evaluate(
+                    request.url,
+                    sourceAppBundleId: request.sourceAppBundleId)
+            } else {
+                pickerMatchedRule = nil
+            }
+
             // Compute smart routing reason when none was provided
             var effectiveReason = reason
             if effectiveReason == nil,
@@ -520,7 +529,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 settingsStore: settingsStore,
                 matchReason: effectiveReason,
                 onSelect: { [weak self] entry, selectedURL in
-                    self?.handlePickerSelection(entry: entry, url: selectedURL, isEmail: isEmail)
+                    self?.handlePickerSelection(
+                        entry: entry,
+                        url: selectedURL,
+                        isEmail: isEmail,
+                        matchedRule: pickerMatchedRule)
                 },
                 onCopy: { [weak self] url in
                     NSPasteboard.general.clearContents()
@@ -737,7 +750,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func handlePickerSelection(
-        entry: BrowserEntry, url: URL, isEmail: Bool
+        entry: BrowserEntry, url: URL, isEmail: Bool, matchedRule: Rule? = nil
     ) {
         var finalURL = url
         finalURL = urlRewriter.applyBrowserRewrites(
@@ -761,23 +774,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 domain: domain, entryId: entry.id.uuidString)
         }
 
-        // Apply rule-attached display/container metadata when the user picks
-        // the target browser the rule was aimed at. We look up against the
-        // original URL so rule rewrites don't swap the match.
-        let matchedRule = ruleEngine.evaluate(url, sourceAppBundleId: nil)
-        let ruleTargetsThisEntry = matchedRule?.targetBundleId == entry.bundleIdentifier
+        // Apply rule-attached overrides only when the user keeps the browser
+        // entry that the matched rule targeted.
+        let ruleTargetsThisEntry = rule(matchedRule, targets: entry)
+        let container = ruleTargetsThisEntry ? matchedRule?.firefoxContainer : nil
         let targetDisplayUUID = ruleTargetsThisEntry
             ? (matchedRule?.targetDisplayUUID
                ?? matchedRule?.targetDisplayIndex.flatMap { indexToUUID($0) })
             : nil
 
+        let isFirefox = ["org.mozilla.firefox", "org.mozilla.firefoxdeveloperedition",
+                         "org.mozilla.nightly"].contains(entry.bundleIdentifier)
+        let effectiveURL: URL
+        if let container, !container.isEmpty, isFirefox,
+           let bridge = Self.firefoxContainerBridgeURL(container: container, target: finalURL) {
+            effectiveURL = bridge
+        } else {
+            effectiveURL = finalURL
+        }
+
+        let effectiveProfile = ruleTargetsThisEntry
+            ? (matchedRule?.ruleProfileId ?? entry.profileId)
+            : entry.profileId
+        let effectivePrivate = ruleTargetsThisEntry
+            ? (matchedRule?.ruleOpenInPrivateWindow ?? entry.openInPrivateWindow)
+            : entry.openInPrivateWindow
+        let effectiveArgs = ruleTargetsThisEntry
+            ? (matchedRule?.ruleCustomLaunchArgs ?? entry.customLaunchArgs)
+            : entry.customLaunchArgs
+        let effectiveNewInstance = ruleTargetsThisEntry
+            ? (matchedRule?.ruleOpenAsNewInstance ?? entry.openAsNewInstance)
+            : entry.openAsNewInstance
+
         openURL(
-            finalURL, withAppAt: appURL,
-            profile: entry.profileId,
+            effectiveURL, withAppAt: appURL,
+            profile: effectiveProfile,
             bundleId: entry.bundleIdentifier,
-            privateWindow: entry.openInPrivateWindow,
-            customLaunchArgs: entry.customLaunchArgs,
-            openAsNewInstance: entry.openAsNewInstance)
+            privateWindow: effectivePrivate,
+            customLaunchArgs: effectiveArgs,
+            openAsNewInstance: effectiveNewInstance)
 
         if let targetDisplayUUID, !targetDisplayUUID.isEmpty {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -785,6 +820,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     ofBundleId: entry.bundleIdentifier, toDisplayUUID: targetDisplayUUID)
             }
         }
+    }
+
+    private func rule(_ rule: Rule?, targets entry: BrowserEntry) -> Bool {
+        guard let rule else { return false }
+        if let targetId = rule.targetBrowserEntryId {
+            return targetId == entry.id
+        }
+        return rule.targetBundleId == entry.bundleIdentifier
     }
 
     /// Resolve a `targetDisplayIndex` (1-based) fallback to a persistent display UUID.
