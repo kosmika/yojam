@@ -62,6 +62,45 @@ final class ProfileLaunchHelperTests: XCTestCase {
             ])
     }
 
+    func testFirefoxStoredProfileNameResolvesFirefox138ProfilePathWithoutProfileGroups() throws {
+        let tempDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempDirectory) }
+
+        let firefoxDirectory = tempDirectory.appendingPathComponent("Firefox")
+        try FileManager.default.createDirectory(
+            at: firefoxDirectory,
+            withIntermediateDirectories: true)
+
+        let profilesIni = """
+        [Profile0]
+        Name=Work
+        IsRelative=1
+        Path=Profiles/qwer.Work
+        StoreID=xxx663
+        ShowSelector=1
+        """
+        try profilesIni.write(
+            to: firefoxDirectory.appendingPathComponent("profiles.ini"),
+            atomically: true,
+            encoding: .utf8)
+
+        let args = ProfileLaunchHelper.launchArguments(
+            forProfile: "Work",
+            browserBundleId: "org.mozilla.firefox",
+            firefoxProfileReader: FirefoxProfileReader(
+                applicationSupportDirectory: tempDirectory,
+                firefoxVersionProvider: { _ in "138.0.1" }))
+
+        XCTAssertEqual(
+            args,
+            [
+                "--profile",
+                firefoxDirectory.appendingPathComponent("Profiles/qwer.Work").path,
+                "--new-instance",
+            ])
+    }
+
     func testChromiumProfileArgumentsStillUseProfileDirectory() {
         let args = ProfileLaunchHelper.launchArguments(
             forProfile: "Profile 2",

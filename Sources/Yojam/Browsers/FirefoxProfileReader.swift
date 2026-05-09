@@ -1,13 +1,18 @@
+import AppKit
 import Foundation
 
 struct FirefoxProfileReader: Sendable {
     private let applicationSupportDirectory: URL
+    private let firefoxVersionProvider: @Sendable (String) -> String?
 
     init(
         applicationSupportDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Application Support")
+            .appendingPathComponent("Library/Application Support"),
+        firefoxVersionProvider: @escaping @Sendable (String) -> String? = FirefoxProfileReader
+            .installedFirefoxVersion(bundleId:)
     ) {
         self.applicationSupportDirectory = applicationSupportDirectory
+        self.firefoxVersionProvider = firefoxVersionProvider
     }
 
     func readProfiles(bundleId: String) -> [BrowserProfile] {
@@ -61,6 +66,8 @@ struct FirefoxProfileReader: Sendable {
         let profileGroupsDir = profilesDir.appendingPathComponent("Profile Groups")
         let hasSelectableProfileStore = FileManager.default.fileExists(
             atPath: profileGroupsDir.path)
+        let supportsSelectableProfiles = Self.supportsSelectableProfiles(
+            versionString: firefoxVersionProvider(bundleId))
 
         var profiles: [BrowserProfile] = []
         for (header, entries) in sections where header.hasPrefix("Profile") {
@@ -69,7 +76,11 @@ struct FirefoxProfileReader: Sendable {
             let profileURL = resolvedProfileURL(
                 path: path, entries: entries, profilesDir: profilesDir)
             let storeID = value(in: entries, caseInsensitiveKey: "StoreID")
-            let profileId = (hasSelectableProfileStore && storeID?.isEmpty == false)
+            let shouldUsePathId = shouldUseSelectableProfilePath(
+                entries: entries,
+                hasSelectableProfileStore: hasSelectableProfileStore,
+                supportsSelectableProfiles: supportsSelectableProfiles)
+            let profileId = shouldUsePathId && storeID?.isEmpty == false
                 ? profileURL.path
                 : name
             let isDefault: Bool
@@ -89,6 +100,20 @@ struct FirefoxProfileReader: Sendable {
         readProfiles(bundleId: bundleId).first { profile in
             profile.name == name && profile.id.hasPrefix("/")
         }?.id
+    }
+
+    private func shouldUseSelectableProfilePath(
+        entries: [String: String],
+        hasSelectableProfileStore: Bool,
+        supportsSelectableProfiles: Bool
+    ) -> Bool {
+        guard let storeID = value(in: entries, caseInsensitiveKey: "StoreID"),
+              !storeID.isEmpty else { return false }
+        if supportsSelectableProfiles { return true }
+        if value(in: entries, caseInsensitiveKey: "ShowSelector") == "1" {
+            return true
+        }
+        return hasSelectableProfileStore
     }
 
     private func resolvedProfileURL(
@@ -111,5 +136,29 @@ struct FirefoxProfileReader: Sendable {
         entries.first { key, _ in
             key.caseInsensitiveCompare(target) == .orderedSame
         }?.value
+    }
+
+    static func supportsSelectableProfiles(versionString: String?) -> Bool {
+        guard let majorVersion = majorVersion(from: versionString) else {
+            return false
+        }
+        return majorVersion >= 138
+    }
+
+    private static func majorVersion(from versionString: String?) -> Int? {
+        guard let firstComponent = versionString?.split(separator: ".").first else {
+            return nil
+        }
+        return Int(firstComponent)
+    }
+
+    private static func installedFirefoxVersion(bundleId: String) -> String? {
+        guard let appURL = NSWorkspace.shared.urlForApplication(
+            withBundleIdentifier: bundleId),
+            let bundle = Bundle(url: appURL) else {
+            return nil
+        }
+        return bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+            ?? bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String
     }
 }
