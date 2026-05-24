@@ -275,8 +275,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // Only process base entries that don't have a profile set yet
                 guard browserManager.browsers[i].profileId == nil else { continue }
                 let bundleId = browserManager.browsers[i].bundleIdentifier
+                let userDataDirectory = browserManager.browsers[i].userDataDirectory
                 let profiles = await Task.detached {
-                    profileDiscovery.discoverProfiles(for: bundleId)
+                    profileDiscovery.discoverProfiles(
+                        for: bundleId,
+                        userDataDirectory: userDataDirectory)
                 }.value
                 let namedProfiles = profiles.filter { !$0.name.isEmpty }
                 guard namedProfiles.count > 1 else { continue }
@@ -480,6 +483,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     profile: effectiveProfile,
                     bundleId: entry.bundleIdentifier,
                     privateWindow: effectivePrivate,
+                    userDataDirectory: entry.userDataDirectory,
                     customLaunchArgs: effectiveArgs,
                     openAsNewInstance: effectiveNewInstance)
 
@@ -811,6 +815,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             profile: effectiveProfile,
             bundleId: entry.bundleIdentifier,
             privateWindow: effectivePrivate,
+            userDataDirectory: entry.userDataDirectory,
             customLaunchArgs: effectiveArgs,
             openAsNewInstance: effectiveNewInstance)
 
@@ -857,6 +862,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         _ url: URL, withAppAt appURL: URL,
         profile: String? = nil, bundleId: String? = nil,
         privateWindow: Bool = false,
+        userDataDirectory: String? = nil,
         customLaunchArgs: String? = nil,
         openAsNewInstance: Bool = false
     ) {
@@ -893,20 +899,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 url: url,
                 profile: profile,
                 bundleId: bundleId,
-                privateWindow: privateWindow)
+                privateWindow: privateWindow,
+                userDataDirectory: userDataDirectory)
             runArgumentLaunch(
                 appURL: appURL,
                 arguments: args,
                 bundleId: bundleId,
-                logPrefix: "Custom launch")
+                logPrefix: "Custom launch",
+                openAsNewInstance: openAsNewInstance)
             return
         }
 
         // Combine profile + private window arguments
         var arguments: [String] = []
-        if let profile, let bundleId {
-            arguments.append(contentsOf: ProfileLaunchHelper.launchArguments(
-                forProfile: profile, browserBundleId: bundleId))
+        if let bundleId {
+            if let profile {
+                arguments.append(contentsOf: ProfileLaunchHelper.launchArguments(
+                    forProfile: profile,
+                    browserBundleId: bundleId,
+                    userDataDirectory: userDataDirectory))
+            } else {
+                arguments.append(contentsOf: ProfileLaunchHelper.dataDirectoryArguments(
+                    userDataDirectory: userDataDirectory,
+                    browserBundleId: bundleId))
+            }
         }
         if privateWindow, let bundleId {
             arguments.append(contentsOf: ProfileLaunchHelper.privateWindowArguments(
@@ -918,7 +934,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 appURL: appURL,
                 arguments: arguments + [url.absoluteString],
                 bundleId: bundleId,
-                logPrefix: "Profile launch")
+                logPrefix: "Profile launch",
+                openAsNewInstance: openAsNewInstance)
             return
         }
 
@@ -942,14 +959,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         url: URL,
         profile: String?,
         bundleId: String?,
-        privateWindow: Bool
+        privateWindow: Bool,
+        userDataDirectory: String? = nil
     ) -> [String] {
         var args = shellSplitArguments(template)
             .map { expandLaunchArgument($0, url: url) }
+        let templateHasUserDataDirectory = args.contains {
+            $0.hasPrefix("--user-data-dir")
+        }
 
-        if let profile, let bundleId {
-            args.append(contentsOf: ProfileLaunchHelper.launchArguments(
-                forProfile: profile, browserBundleId: bundleId))
+        if let bundleId {
+            if let profile {
+                args.append(contentsOf: ProfileLaunchHelper.launchArguments(
+                    forProfile: profile,
+                    browserBundleId: bundleId,
+                    userDataDirectory: templateHasUserDataDirectory ? nil : userDataDirectory))
+            } else if !templateHasUserDataDirectory {
+                args.append(contentsOf: ProfileLaunchHelper.dataDirectoryArguments(
+                    userDataDirectory: userDataDirectory,
+                    browserBundleId: bundleId))
+            }
         }
         if privateWindow, let bundleId {
             args.append(contentsOf: ProfileLaunchHelper.privateWindowArguments(
@@ -965,11 +994,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         appURL: URL,
         arguments: [String],
         bundleId: String?,
-        logPrefix: String
+        logPrefix: String,
+        openAsNewInstance: Bool
     ) {
+        let invocation = Self.argumentLaunchInvocation(
+            appURL: appURL,
+            arguments: arguments,
+            openAsNewInstance: openAsNewInstance)
         let process = Process()
-        process.executableURL = executableURL(for: appURL) ?? appURL
-        process.arguments = arguments
+        process.executableURL = invocation.executableURL
+        process.arguments = invocation.arguments
         process.terminationHandler = { proc in
             if proc.terminationStatus != 0 {
                 let status = proc.terminationStatus
@@ -987,6 +1021,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } catch {
             YojamLogger.shared.log("\(logPrefix) failed: \(error.localizedDescription)")
         }
+    }
+
+    static func argumentLaunchInvocation(
+        appURL: URL,
+        arguments: [String],
+        openAsNewInstance: Bool
+    ) -> (executableURL: URL, arguments: [String]) {
+        if openAsNewInstance, appURL.pathExtension == "app" {
+            return (
+                URL(fileURLWithPath: "/usr/bin/open"),
+                ["-n", "-a", appURL.path, "--args"] + arguments
+            )
+        }
+        return (executableURL(for: appURL) ?? appURL, arguments)
     }
 
     /// Split a string of command-line arguments respecting single and double quotes.
@@ -1022,7 +1070,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return expanded
     }
 
-    private func executableURL(for appURL: URL) -> URL? {
+    private static func executableURL(for appURL: URL) -> URL? {
         guard appURL.pathExtension == "app" else { return appURL }
         if let bundle = Bundle(url: appURL), let exec = bundle.executableURL {
             return exec
@@ -1053,6 +1101,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             profile: first.profileId,
             bundleId: first.bundleIdentifier,
             privateWindow: first.openInPrivateWindow,
+            userDataDirectory: first.userDataDirectory,
             customLaunchArgs: first.customLaunchArgs,
             openAsNewInstance: first.openAsNewInstance)
     }

@@ -36,6 +36,72 @@ final class SyncConflictResolverTests: XCTestCase {
         XCTAssertEqual(merged.count, 2)
     }
 
+    func testBrowserMergeDeduplicatesSameSyncedBrowserWithDifferentIds() {
+        let localId = UUID()
+        let remoteId = UUID()
+        let local = BrowserEntry(
+            id: localId,
+            bundleIdentifier: "com.vivaldi.Vivaldi",
+            displayName: "Vivaldi",
+            position: 0,
+            profileId: "Profile 1",
+            profileName: "Personal",
+            lastSeenAt: Date(timeIntervalSince1970: 1000))
+        let remote = BrowserEntry(
+            id: remoteId,
+            bundleIdentifier: "com.vivaldi.Vivaldi",
+            displayName: "Vivaldi",
+            position: 1,
+            profileId: "Profile 1",
+            profileName: "Personal",
+            lastSeenAt: Date(timeIntervalSince1970: 2000))
+
+        let result = SyncConflictResolver.mergeBrowserListsWithAliases(
+            local: [local],
+            remote: [remote])
+
+        XCTAssertEqual(result.entries.count, 1)
+        XCTAssertEqual(result.entries[0].id, localId)
+        XCTAssertEqual(result.idAliases[remoteId], localId)
+    }
+
+    func testBrowserMergeKeepsDistinctCustomArgumentInstances() {
+        let first = BrowserEntry(
+            bundleIdentifier: "org.chromium.Chromium",
+            displayName: "Chromium Tmp 1",
+            userDataDirectory: "/tmp/temporary1",
+            openAsNewInstance: true)
+        let second = BrowserEntry(
+            bundleIdentifier: "org.chromium.Chromium",
+            displayName: "Chromium Tmp 2",
+            userDataDirectory: "/tmp/temporary2",
+            openAsNewInstance: true)
+
+        let merged = SyncConflictResolver.mergeBrowserLists(
+            local: [first],
+            remote: [second])
+
+        XCTAssertEqual(merged.count, 2)
+    }
+
+    func testBrowserAliasRemapsRuleTargets() {
+        let oldId = UUID()
+        let newId = UUID()
+        let rule = Rule(
+            name: "Profile rule",
+            matchType: .all,
+            pattern: "",
+            targetBundleId: "com.vivaldi.Vivaldi",
+            targetAppName: "Vivaldi",
+            targetBrowserEntryId: oldId)
+
+        let remapped = SyncConflictResolver.remapRuleBrowserTargets(
+            [rule],
+            aliases: [oldId: newId])
+
+        XCTAssertEqual(remapped[0].targetBrowserEntryId, newId)
+    }
+
     func testRewriteRuleMerge() {
         let local = [URLRewriteRule(name: "Local", matchPattern: "a", replacement: "b", scope: .global)]
         let remote = [URLRewriteRule(name: "Remote", matchPattern: "c", replacement: "d", scope: .global)]

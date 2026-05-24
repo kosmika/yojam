@@ -197,6 +197,7 @@ struct BrowsersTab: View {
         let browserId = browserManager.browsers[safe: index]?.id
         return VStack(spacing: 12) {
             if let browserId, let browser = browserManager.browsers.first(where: { $0.id == browserId }) {
+                let profiles = cachedProfiles[profileCacheKey(for: browser)] ?? []
                 HStack(spacing: 12) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Display Name")
@@ -218,7 +219,6 @@ struct BrowsersTab: View {
                             }
                     }
 
-                    let profiles = cachedProfiles[browser.bundleIdentifier] ?? []
                     if !profiles.isEmpty {
                         VStack(alignment: .leading, spacing: 4) {
                             HStack(spacing: 4) {
@@ -246,6 +246,33 @@ struct BrowsersTab: View {
                             .labelsHidden()
                             .pickerStyle(.menu)
                             .accessibilityLabel("Browser profile")
+                        }
+                    }
+                }
+
+                if ProfileLaunchHelper.supportsUserDataDirectory(
+                    browserBundleId: browser.bundleIdentifier) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 4) {
+                            Text("Data Dir")
+                                .font(.system(size: 11))
+                                .foregroundColor(Theme.textSecondary)
+                            ThemeHelpIcon(text: HelpText.Browsers.userDataDirectory)
+                        }
+                        HStack(spacing: 8) {
+                            ThemeTextField(
+                                placeholder: "~/Library/Application Support/Chromium",
+                                text: Binding(
+                                    get: {
+                                        browserManager.browsers.first(where: { $0.id == browserId })?.userDataDirectory ?? ""
+                                    },
+                                    set: { newValue in
+                                        updateUserDataDirectory(newValue, for: browserId)
+                                    }),
+                                isMono: true)
+                            ThemeButton("Choose...") {
+                                chooseUserDataDirectory(for: browserId)
+                            }
                         }
                     }
                 }
@@ -342,16 +369,11 @@ struct BrowsersTab: View {
         .padding(.horizontal, 52)
         .padding(.vertical, 12)
         .background(Theme.bgInput.opacity(0.5))
-        .task(id: browserId) {
+        .task(id: profileTaskIdentifier(for: browserId)) {
             guard let browserId,
                   let browser = browserManager.browsers.first(where: { $0.id == browserId }),
-                  cachedProfiles[browser.bundleIdentifier] == nil else { return }
-            let bundleId = browser.bundleIdentifier
-            let discovery = profileDiscovery
-            let profiles = await Task.detached {
-                discovery.discoverProfiles(for: bundleId)
-            }.value
-            cachedProfiles[bundleId] = profiles
+                  cachedProfiles[profileCacheKey(for: browser)] == nil else { return }
+            await loadProfiles(for: browser)
         }
     }
 
@@ -493,6 +515,65 @@ struct BrowsersTab: View {
         if let saved = persisted.first(where: { $0.id == browserId }),
            saved.displayName != entry.displayName {
             browserManager.updateBrowser(entry)
+        }
+    }
+
+    private func profileCacheKey(for browser: BrowserEntry) -> String {
+        "\(browser.bundleIdentifier)|\(browser.userDataDirectory ?? "")"
+    }
+
+    private func profileTaskIdentifier(for browserId: UUID?) -> String {
+        guard let browserId,
+              let browser = browserManager.browsers.first(where: { $0.id == browserId }) else {
+            return "none"
+        }
+        return "\(browser.id.uuidString)|\(profileCacheKey(for: browser))"
+    }
+
+    private func loadProfiles(for browser: BrowserEntry) async {
+        let key = profileCacheKey(for: browser)
+        let bundleId = browser.bundleIdentifier
+        let userDataDirectory = browser.userDataDirectory
+        let discovery = profileDiscovery
+        let profiles = await Task.detached {
+            discovery.discoverProfiles(
+                for: bundleId,
+                userDataDirectory: userDataDirectory)
+        }.value
+        if let current = browserManager.browsers.first(where: { $0.id == browser.id }),
+           profileCacheKey(for: current) == key {
+            cachedProfiles[key] = profiles
+        }
+    }
+
+    private func updateUserDataDirectory(_ value: String, for browserId: UUID) {
+        guard var entry = browserManager.browsers.first(where: { $0.id == browserId }) else {
+            return
+        }
+        let oldKey = profileCacheKey(for: entry)
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        entry.userDataDirectory = trimmed.isEmpty ? nil : trimmed
+        entry.profileId = nil
+        entry.profileName = nil
+        if !trimmed.isEmpty {
+            entry.openAsNewInstance = true
+        }
+        browserManager.updateBrowser(entry)
+        browserManager.refreshProfileSuggestions()
+        cachedProfiles.removeValue(forKey: oldKey)
+        cachedProfiles.removeValue(forKey: profileCacheKey(for: entry))
+    }
+
+    private func chooseUserDataDirectory(for browserId: UUID) {
+        let panel = NSOpenPanel()
+        panel.title = "Choose Chromium user data directory"
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support")
+        if panel.runModal() == .OK, let url = panel.url {
+            updateUserDataDirectory(url.path, for: browserId)
         }
     }
 

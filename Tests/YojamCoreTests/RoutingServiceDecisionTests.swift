@@ -121,6 +121,31 @@ final class RoutingServiceDecisionTests: XCTestCase {
         }
     }
 
+    func testLocalHTMLFileURLCanMatchRegexRule() {
+        let rule = Rule(
+            name: "Local HTML",
+            matchType: .regex,
+            pattern: #"^file:///.*\.html?($|[?#])"#,
+            targetBundleId: "com.google.Chrome",
+            targetAppName: "Chrome")
+        let config = makeConfig(
+            browsers: [chrome],
+            rules: [rule],
+            activationMode: .smartFallback)
+        let url = URL(fileURLWithPath: "/tmp/yojam-test.html")
+        let request = IncomingLinkRequest(url: url, origin: .fileOpen)
+
+        let decision = RoutingService.decide(request: request, configuration: config)
+
+        if case .openDirect(let browser, let finalURL, _, let reason) = decision {
+            XCTAssertEqual(browser.bundleIdentifier, "com.google.Chrome")
+            XCTAssertEqual(finalURL, url)
+            XCTAssertEqual(reason, "Matched rule: Local HTML")
+        } else {
+            XCTFail("Local HTML file URLs should route through the rule engine")
+        }
+    }
+
     func testBrowserRuleOpensDirectEvenWhenPickerNormallyShows() {
         let rule = Rule(
             name: "Chrome Work", matchType: .domain, pattern: "example.com",

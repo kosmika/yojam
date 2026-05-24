@@ -1187,15 +1187,26 @@ struct AddRuleSheet: View {
     /// which can be slow on cold disk reads.
     private func refreshTargetProfiles() {
         let bundleId = targetBundleId
+        let targetEntryId = targetBrowserEntryId
+        let userDataDirectory = targetEntryId.flatMap { entryId in
+            browserManager.browsers.first(where: { $0.id == entryId })?.userDataDirectory
+        } ?? nil
         guard !bundleId.isEmpty else { targetProfiles = []; return }
         let discovery = ProfileDiscovery()
         Task { @MainActor in
             let found = await Task.detached {
-                discovery.discoverProfiles(for: bundleId)
+                discovery.discoverProfiles(
+                    for: bundleId,
+                    userDataDirectory: userDataDirectory)
             }.value
             // Race guard: ignore result if the user picked a different
             // target while we were fetching.
-            if bundleId == targetBundleId {
+            let currentUserDataDirectory = targetBrowserEntryId.flatMap { entryId in
+                browserManager.browsers.first(where: { $0.id == entryId })?.userDataDirectory
+            } ?? nil
+            if bundleId == targetBundleId,
+               targetEntryId == targetBrowserEntryId,
+               userDataDirectory == currentUserDataDirectory {
                 targetProfiles = found
             }
         }

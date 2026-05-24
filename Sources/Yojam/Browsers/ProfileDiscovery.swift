@@ -13,26 +13,32 @@ final class ProfileDiscovery: Sendable {
     private let chromiumReader = ChromiumProfileReader()
     private let firefoxReader = FirefoxProfileReader()
 
-    func discoverProfiles(for bundleId: String) -> [BrowserProfile] {
+    func discoverProfiles(for bundleId: String, userDataDirectory: String? = nil) -> [BrowserProfile] {
         switch bundleId {
         case "com.google.Chrome":
             return chromiumReader.readProfiles(
-                appSupportPath: "Google/Chrome", bundleId: bundleId)
+                appSupportPath: "Google/Chrome", bundleId: bundleId,
+                userDataDirectory: userDataDirectory)
         case "com.brave.Browser":
             return chromiumReader.readProfiles(
-                appSupportPath: "BraveSoftware/Brave-Browser", bundleId: bundleId)
+                appSupportPath: "BraveSoftware/Brave-Browser", bundleId: bundleId,
+                userDataDirectory: userDataDirectory)
         case "com.microsoft.edgemac":
             return chromiumReader.readProfiles(
-                appSupportPath: "Microsoft Edge", bundleId: bundleId)
+                appSupportPath: "Microsoft Edge", bundleId: bundleId,
+                userDataDirectory: userDataDirectory)
         case "com.vivaldi.Vivaldi":
             return chromiumReader.readProfiles(
-                appSupportPath: "Vivaldi", bundleId: bundleId)
+                appSupportPath: "Vivaldi", bundleId: bundleId,
+                userDataDirectory: userDataDirectory)
         case "com.operasoftware.Opera":
             return chromiumReader.readProfiles(
-                appSupportPath: "com.operasoftware.Opera", bundleId: bundleId)
+                appSupportPath: "com.operasoftware.Opera", bundleId: bundleId,
+                userDataDirectory: userDataDirectory)
         case "org.chromium.Chromium":
             return chromiumReader.readProfiles(
-                appSupportPath: "Chromium", bundleId: bundleId)
+                appSupportPath: "Chromium", bundleId: bundleId,
+                userDataDirectory: userDataDirectory)
         case "org.mozilla.firefox", "org.mozilla.firefoxdeveloperedition", "org.mozilla.nightly":
             return firefoxReader.readProfiles(bundleId: bundleId)
         case "com.apple.Safari":

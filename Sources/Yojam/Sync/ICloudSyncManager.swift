@@ -180,12 +180,15 @@ final class ICloudSyncManager {
         defer { isApplyingRemoteChange = false }
 
         let decoder = JSONDecoder()
+        var browserIdAliases: [UUID: UUID] = [:]
         if let data = kvStore.data(forKey: "sync_browsers") {
             do {
                 let remote = try decoder.decode([BrowserEntry].self, from: data)
                     .filter { !$0.bundleIdentifier.hasPrefix("/") }
-                let merged = SyncConflictResolver.mergeBrowserLists(
+                let mergeResult = SyncConflictResolver.mergeBrowserListsWithAliases(
                     local: settingsStore.loadBrowsers(), remote: remote)
+                let merged = mergeResult.entries
+                browserIdAliases.merge(mergeResult.idAliases) { current, _ in current }
                 settingsStore.saveBrowsers(merged)
                 // §4: Update live in-memory state
                 browserManager?.browsers = merged
@@ -196,10 +199,14 @@ final class ICloudSyncManager {
         }
         if let data = kvStore.data(forKey: "sync_rules") {
             do {
-                let remote = try decoder.decode([Rule].self, from: data)
+                let remote = SyncConflictResolver.remapRuleBrowserTargets(
+                    try decoder.decode([Rule].self, from: data),
+                    aliases: browserIdAliases)
                 let allLocal = settingsStore.loadRules()
                 let localBuiltIns = allLocal.filter { $0.isBuiltIn }
-                let local = allLocal.filter { !$0.isBuiltIn }
+                let local = SyncConflictResolver.remapRuleBrowserTargets(
+                    allLocal.filter { !$0.isBuiltIn },
+                    aliases: browserIdAliases)
                 let merged = SyncConflictResolver.mergeRules(
                     local: local, remote: remote)
                 var allRules = localBuiltIns

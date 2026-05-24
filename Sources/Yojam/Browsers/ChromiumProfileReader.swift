@@ -1,10 +1,14 @@
 import Foundation
 
 struct ChromiumProfileReader {
-    func readProfiles(appSupportPath: String, bundleId: String) -> [BrowserProfile] {
-        let localStatePath = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Application Support")
-            .appendingPathComponent(appSupportPath)
+    func readProfiles(
+        appSupportPath: String,
+        bundleId: String,
+        userDataDirectory: String? = nil
+    ) -> [BrowserProfile] {
+        let localStatePath = userDataRoot(
+            appSupportPath: appSupportPath,
+            userDataDirectory: userDataDirectory)
             .appendingPathComponent("Local State")
         guard let data = try? Data(contentsOf: localStatePath) else {
             YojamLogger.shared.log("ChromiumProfileReader: Local State not found at \(localStatePath.path)")
@@ -46,5 +50,31 @@ struct ChromiumProfileReader {
                 isDefault: dirName == lastUsed
             )
         }.sorted { $0.name < $1.name }
+    }
+
+    private func userDataRoot(
+        appSupportPath: String,
+        userDataDirectory: String?
+    ) -> URL {
+        if let userDataDirectory,
+           !userDataDirectory.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return URL(fileURLWithPath: expandedPath(userDataDirectory))
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support")
+            .appendingPathComponent(appSupportPath)
+    }
+
+    private func expandedPath(_ path: String) -> String {
+        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        if trimmed == "~" { return home }
+        if trimmed.hasPrefix("~/") {
+            return home + String(trimmed.dropFirst())
+        }
+        if trimmed.hasPrefix("$HOME/") {
+            return home + String(trimmed.dropFirst("$HOME".count))
+        }
+        return trimmed
     }
 }

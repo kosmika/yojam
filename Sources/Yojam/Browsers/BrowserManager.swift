@@ -24,22 +24,12 @@ final class BrowserManager: ObservableObject {
     /// Remove duplicate profile entries and profile entries with empty names
     /// that may have been created by earlier versions of profile discovery.
     private func deduplicateProfileEntries() {
-        var seen = Set<String>() // "bundleId|profileId"
-        var cleaned: [BrowserEntry] = []
-        for entry in browsers {
-            // §20: Check empty name BEFORE inserting into seen set
-            if entry.profileId != nil,
-               let profileName = entry.profileName,
-               profileName.isEmpty {
-                continue
-            }
-            let key = "\(entry.bundleIdentifier)|\(entry.profileId ?? "")|\(entry.displayName)|\(entry.customLaunchArgs ?? "")|\(entry.openInPrivateWindow)|\(entry.openAsNewInstance)"
-            guard seen.insert(key).inserted else { continue }
-            cleaned.append(entry)
+        let cleanedInput = browsers.filter { entry in
+            !(entry.profileId != nil && (entry.profileName ?? "").isEmpty)
         }
+        let cleaned = SyncConflictResolver.mergeBrowserLists(local: cleanedInput, remote: [])
         if cleaned.count != browsers.count {
             browsers = cleaned
-            for i in browsers.indices { browsers[i].position = i }
             save()
         }
     }
@@ -176,29 +166,36 @@ final class BrowserManager: ObservableObject {
     /// Regenerate suggested browser entries for profiles not yet in the active list.
     /// P5/B-PROFILEDISC: Runs file I/O in Task.detached, publishes results back on main.
     func refreshProfileSuggestions() {
-        let activeKeys = Set(browsers.map { "\($0.bundleIdentifier)|\($0.profileId ?? "")" })
-        let activeBundleIds = Set(browsers.map(\.bundleIdentifier))
-        let baseNames = Dictionary(
-            browsers.map { ($0.bundleIdentifier, $0.displayName) },
-            uniquingKeysWith: { first, _ in first })
+        let activeKeys = Set(browsers.map { Self.profileSuggestionKey(for: $0) })
+        let discoveryTargets = Array(browsers.reduce(into: [String: BrowserEntry]()) { targets, entry in
+            let key = "\(entry.bundleIdentifier)|\(entry.userDataDirectory ?? "")"
+            targets[key] = targets[key] ?? entry
+        }.values)
 
-        Task.detached { [activeKeys, activeBundleIds, baseNames] in
+        Task.detached { [activeKeys, discoveryTargets] in
             let discovery = ProfileDiscovery()
             var profileSuggestions: [BrowserEntry] = []
-            for bundleId in activeBundleIds {
-                let profiles = discovery.discoverProfiles(for: bundleId)
+            for target in discoveryTargets {
+                let bundleId = target.bundleIdentifier
+                let profiles = discovery.discoverProfiles(
+                    for: bundleId,
+                    userDataDirectory: target.userDataDirectory)
                 let named = profiles.filter { !$0.name.isEmpty }
                 guard named.count > 1 else { continue }
-                let baseName = baseNames[bundleId] ?? bundleId
+                let baseName = target.displayName
                 for profile in named {
-                    let key = "\(bundleId)|\(profile.id)"
+                    let key = Self.profileSuggestionKey(
+                        bundleIdentifier: bundleId,
+                        profileId: profile.id,
+                        userDataDirectory: target.userDataDirectory)
                     if !activeKeys.contains(key) {
                         profileSuggestions.append(BrowserEntry(
                             bundleIdentifier: bundleId,
                             displayName: baseName,
                             profileId: profile.id,
                             profileName: profile.name,
-                            source: .suggested))
+                            source: .suggested,
+                            userDataDirectory: target.userDataDirectory))
                     }
                 }
             }
@@ -207,6 +204,21 @@ final class BrowserManager: ObservableObject {
                 self.suggestedBrowsers = self.suggestedBrowsers.filter { $0.profileId == nil } + profileSuggestions
             }
         }
+    }
+
+    nonisolated private static func profileSuggestionKey(for entry: BrowserEntry) -> String {
+        Self.profileSuggestionKey(
+            bundleIdentifier: entry.bundleIdentifier,
+            profileId: entry.profileId,
+            userDataDirectory: entry.userDataDirectory)
+    }
+
+    nonisolated private static func profileSuggestionKey(
+        bundleIdentifier: String,
+        profileId: String?,
+        userDataDirectory: String?
+    ) -> String {
+        "\(bundleIdentifier)|\(userDataDirectory ?? "")|\(profileId ?? "")"
     }
 
     func handleAppInstalled(bundleId: String, appURL: URL) {

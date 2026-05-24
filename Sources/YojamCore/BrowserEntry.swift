@@ -16,6 +16,8 @@ public struct BrowserEntry: Codable, Identifiable, Hashable, Sendable {
     public var lastSeenAt: Date?
     public var lastModifiedAt: Date?
     public var customIconData: Data?
+    /// Chromium user data directory. Used with --user-data-dir.
+    public var userDataDirectory: String?
     /// Custom CLI launch arguments. Use $URL as a placeholder for the URL.
     public var customLaunchArgs: String?
     /// Launch this entry as a separate app instance when using app-bundle opens.
@@ -37,6 +39,7 @@ public struct BrowserEntry: Codable, Identifiable, Hashable, Sendable {
         lastSeenAt: Date? = Date(),
         lastModifiedAt: Date? = nil,
         customIconData: Data? = nil,
+        userDataDirectory: String? = nil,
         customLaunchArgs: String? = nil,
         openAsNewInstance: Bool = false
     ) {
@@ -55,6 +58,7 @@ public struct BrowserEntry: Codable, Identifiable, Hashable, Sendable {
         self.lastSeenAt = lastSeenAt
         self.lastModifiedAt = lastModifiedAt
         self.customIconData = customIconData
+        self.userDataDirectory = userDataDirectory
         self.customLaunchArgs = customLaunchArgs
         self.openAsNewInstance = openAsNewInstance
     }
@@ -70,7 +74,7 @@ public struct BrowserEntry: Codable, Identifiable, Hashable, Sendable {
         case id, bundleIdentifier, displayName, enabled, position
         case profileId, profileName, stripUTMParams, openInPrivateWindow
         case rewriteRules, source, isInstalled, lastSeenAt, lastModifiedAt
-        case customIconData, customLaunchArgs, openAsNewInstance
+        case customIconData, userDataDirectory, customLaunchArgs, openAsNewInstance
     }
 
     public init(from decoder: Decoder) throws {
@@ -90,6 +94,7 @@ public struct BrowserEntry: Codable, Identifiable, Hashable, Sendable {
         lastSeenAt = try c.decodeIfPresent(Date.self, forKey: .lastSeenAt)
         lastModifiedAt = try c.decodeIfPresent(Date.self, forKey: .lastModifiedAt)
         customIconData = try c.decodeIfPresent(Data.self, forKey: .customIconData)
+        userDataDirectory = try c.decodeIfPresent(String.self, forKey: .userDataDirectory)
         customLaunchArgs = try c.decodeIfPresent(String.self, forKey: .customLaunchArgs)
         openAsNewInstance = try c.decodeIfPresent(Bool.self, forKey: .openAsNewInstance) ?? false
     }

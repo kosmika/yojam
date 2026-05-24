@@ -202,7 +202,7 @@ $URL
 ```
 
 Yojam passes these arguments directly - no shell involved.
-For app bundles, enable **Open as new instance** if the entry needs its own Chromium user-data directory. `$HOME` and leading `~/` are expanded without invoking a shell.
+For Chromium-based browsers, set **Data Dir** when an entry should use a custom `--user-data-dir`; the profile menu reloads from that directory and Yojam opens it as a new app instance. `$HOME` and leading `~/` are expanded without invoking a shell.
 
 ## Settings
 

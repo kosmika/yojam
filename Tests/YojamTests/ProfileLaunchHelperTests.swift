@@ -108,4 +108,16 @@ final class ProfileLaunchHelperTests: XCTestCase {
 
         XCTAssertEqual(args, ["--profile-directory=Profile 2"])
     }
+
+    func testChromiumProfileArgumentsIncludeCustomUserDataDirectory() {
+        let args = ProfileLaunchHelper.launchArguments(
+            forProfile: "Profile 2",
+            browserBundleId: "org.chromium.Chromium",
+            userDataDirectory: "/tmp/chromium-state")
+
+        XCTAssertEqual(args, [
+            "--user-data-dir=/tmp/chromium-state",
+            "--profile-directory=Profile 2",
+        ])
+    }
 }

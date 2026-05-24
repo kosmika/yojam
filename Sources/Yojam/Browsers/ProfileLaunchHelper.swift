@@ -6,16 +6,27 @@ enum ProfileLaunchHelper {
         "org.mozilla.firefoxdeveloperedition",
         "org.mozilla.nightly",
     ]
+    private static let chromiumBundleIds: Set<String> = [
+        "com.google.Chrome",
+        "com.brave.Browser",
+        "com.microsoft.edgemac",
+        "com.vivaldi.Vivaldi",
+        "com.operasoftware.Opera",
+        "org.chromium.Chromium",
+    ]
 
     static func launchArguments(
         forProfile profileId: String,
         browserBundleId: String,
+        userDataDirectory: String? = nil,
         firefoxProfileReader: FirefoxProfileReader = FirefoxProfileReader()
     ) -> [String] {
         switch browserBundleId {
-        case "com.google.Chrome", "com.brave.Browser", "com.microsoft.edgemac",
-             "com.vivaldi.Vivaldi", "com.operasoftware.Opera", "org.chromium.Chromium":
-            return ["--profile-directory=\(profileId)"]
+        case let id where chromiumBundleIds.contains(id):
+            return dataDirectoryArguments(
+                userDataDirectory: userDataDirectory,
+                browserBundleId: browserBundleId)
+                + ["--profile-directory=\(profileId)"]
         case let id where firefoxBundleIds.contains(id):
             if isFirefoxProfilePath(profileId) {
                 return ["--profile", expandedProfilePath(profileId), "--new-instance"]
@@ -33,6 +44,22 @@ enum ProfileLaunchHelper {
         }
     }
 
+    static func dataDirectoryArguments(
+        userDataDirectory: String?,
+        browserBundleId: String
+    ) -> [String] {
+        guard chromiumBundleIds.contains(browserBundleId),
+              let userDataDirectory,
+              !userDataDirectory.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return []
+        }
+        return ["--user-data-dir=\(expandedProfilePath(userDataDirectory))"]
+    }
+
+    static func supportsUserDataDirectory(browserBundleId: String) -> Bool {
+        chromiumBundleIds.contains(browserBundleId)
+    }
+
     private static func isFirefoxProfilePath(_ profileId: String) -> Bool {
         let expanded = expandedProfilePath(profileId)
         return expanded.hasPrefix("/")
@@ -43,6 +70,9 @@ enum ProfileLaunchHelper {
         if profileId == "~" { return home }
         if profileId.hasPrefix("~/") {
             return home + String(profileId.dropFirst())
+        }
+        if profileId.hasPrefix("$HOME/") {
+            return home + String(profileId.dropFirst("$HOME".count))
         }
         return profileId
     }
