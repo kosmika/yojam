@@ -295,9 +295,9 @@ fi
 
 # ---- Homebrew cask ----
 #
-# Print a ready-to-commit cask block for the fluffypony/homebrew-yojam tap,
-# pinned to the version + sha256 of the just-built DMG. Copy-paste the output
-# into that repo's Casks/yojam.rb and push.
+# Print a ready-to-submit cask block for Homebrew/homebrew-cask, pinned to the
+# version + sha256 of the just-built DMG. The canonical cask path is
+# Casks/y/yojam.rb.
 
 info "Rendering Homebrew cask block"
 DMG_SHA256=$(shasum -a 256 "$DMG_PATH" | awk '{print $1}')
@@ -309,7 +309,7 @@ cask "yojam" do
 
   url "https://yoj.am/releases/Yojam-#{version}.dmg"
   name "Yojam"
-  desc "Open links in whatever browser, app, or profile you need - whatever yo jam is"
+  desc "Open links in selected browser, profiles, or apps"
   homepage "https://yoj.am/"
 
   livecheck do
@@ -318,7 +318,7 @@ cask "yojam" do
   end
 
   auto_updates true
-  depends_on macos: ">= :sonoma"
+  depends_on macos: :sonoma
 
   app "Yojam.app"
 
@@ -334,20 +334,12 @@ cask "yojam" do
     "~/Library/Application Support/*/*/NativeMessagingHosts/org.yojam.host.json",
     "~/Library/Application Support/*/NativeMessagingHosts/org.yojam.host.json",
     "~/Library/Application Support/Yojam",
-    "~/Library/Caches/com.yojam.app",
-    "~/Library/Caches/com.yojam.app.CLI",
-    "~/Library/Caches/com.yojam.app.NativeHost",
-    "~/Library/Caches/com.yojam.app.SafariExtension",
-    "~/Library/Caches/com.yojam.app.ShareExtension",
+    "~/Library/Caches/com.yojam.app*",
     "~/Library/Group Containers/group.org.yojam.shared",
     "~/Library/HTTPStorages/com.yojam.app",
     "~/Library/HTTPStorages/com.yojam.app.binarycookies",
     "~/Library/Logs/Yojam",
-    "~/Library/Preferences/com.yojam.app.CLI.plist",
-    "~/Library/Preferences/com.yojam.app.NativeHost.plist",
-    "~/Library/Preferences/com.yojam.app.plist",
-    "~/Library/Preferences/com.yojam.app.SafariExtension.plist",
-    "~/Library/Preferences/com.yojam.app.ShareExtension.plist",
+    "~/Library/Preferences/com.yojam.app.*",
     "~/Library/Saved Application State/com.yojam.app.savedState",
     "~/Library/WebKit/com.yojam.app",
   ]
@@ -358,7 +350,7 @@ EOF
 ok "Cask rendered for v${MARKETING_VERSION} (sha256 ${DMG_SHA256:0:12}...)"
 
 echo ""
-echo "  ── Homebrew cask (paste into homebrew-yojam/Casks/yojam.rb) ──"
+echo "  ── Homebrew cask (paste into Homebrew/homebrew-cask Casks/y/yojam.rb) ──"
 echo ""
 printf '%s\n' "$CASK_CONTENT" | sed 's/^/  /'
 echo ""
@@ -377,8 +369,8 @@ echo "  │  Next steps:                              │"
 echo "  │  1. Upload DMG + any *.delta files to     │"
 echo "  │     yoj.am/releases/                      │"
 echo "  │  2. Upload appcast.xml to yoj.am/         │"
-echo "  │  3. Paste the cask block above into       │"
-echo "  │     homebrew-yojam/Casks/yojam.rb + push  │"
+echo "  │  3. Update Homebrew/homebrew-cask at      │"
+echo "  │     Casks/y/yojam.rb, then open a PR      │"
 echo "  │  4. Verify: open old version, check for   │"
 echo "  │     updates, confirm it finds the new one │"
 echo "  └──────────────────────────────────────────┘"
